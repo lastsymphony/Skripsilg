@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>SkripsiLagi Scraper – Preview</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-50 text-slate-900">
+  <div class="max-w-4xl mx-auto px-4 py-8">
+    <header class="mb-6">
+      <h1 class="text-2xl font-bold">SkripsiLagi Scraper</h1>
+      <p class="text-sm text-slate-600">
+        Ambil meta + init data Bubble (jika tersedia) dari <code>skripsilagi.com</code>.
+      </p>
+    </header>
+
+    <div class="bg-white rounded-2xl shadow p-4 md:p-6 space-y-4">
+      <div class="flex flex-col md:flex-row gap-3">
+        <input id="url" class="flex-1 px-4 py-2 rounded-xl border border-slate-300"
+               value="https://skripsilagi.com/bikinjudul" />
+        <button id="go" class="px-5 py-2 rounded-xl bg-black text-white">Scrape</button>
+      </div>
+      <div id="quicklinks" class="text-sm text-slate-600"></div>
+    </div>
+
+    <section id="out" class="mt-6 space-y-6"></section>
+  </div>
+
+  <script>
+    const out = document.getElementById('out');
+    const urlInput = document.getElementById('url');
+    const quicklinks = document.getElementById('quicklinks');
+
+    function el(tag, cls, html) {
+      const e = document.createElement(tag);
+      if (cls) e.className = cls;
+      if (html != null) e.innerHTML = html;
+      return e;
+    }
+
+    async function scrape() {
+      out.innerHTML = "";
+      const target = urlInput.value.trim() || "https://skripsilagi.com/bikinjudul";
+      const qs = "/api/scrape?url=" + encodeURIComponent(target);
+      quicklinks.innerHTML =
+        `Raw HTML: <a class="underline" href="/api/proxy-html?url=${encodeURIComponent(target)}" target="_blank">/api/proxy-html</a>`;
+
+      const box = el('div', 'bg-white rounded-2xl shadow p-4 md:p-6 space-y-4');
+      box.append(el('div', 'text-sm text-slate-500', `GET ${qs}`));
+      out.append(box);
+
+      const t0 = performance.now();
+      const r = await fetch(qs);
+      const j = await r.json();
+      const t1 = performance.now();
+
+      if (!j.ok) {
+        box.append(el('div', 'text-red-600', `❌ ${j.error || 'Gagal scrape'}`));
+        return;
+      }
+
+      box.append(el('div', 'text-xs text-slate-500', `Latency: ${(t1 - t0).toFixed(0)} ms`));
+
+      // Meta
+      if (j.meta) {
+        const m = j.meta;
+        const metaCard = el('div', 'grid md:grid-cols-3 gap-4 items-start');
+        const info = el('div', 'md:col-span-2 space-y-2');
+        info.append(el('div', 'text-lg font-semibold', m.title || '(tanpa title)'));
+        if (m.description) info.append(el('p', 'text-sm text-slate-700', m.description));
+        const links = el('div', 'text-sm space-x-3');
+        if (m.canonical) links.append(el('a', 'underline', 'canonical')).href = m.canonical;
+        if (m.favicon) links.append(el('a', 'underline', 'favicon')).href = m.favicon;
+        metaCard.append(info);
+
+        const img = el('img', 'rounded-xl w-full');
+        img.src = m.image || '';
+        img.alt = 'og:image';
+        metaCard.append(img);
+
+        box.append(el('h3', 'font-semibold', 'Meta'));
+        box.append(metaCard);
+      }
+
+      // Assets ringkas
+      if (j.assets && (j.assets.css?.length || j.assets.js?.length)) {
+        const a = el('div', 'text-sm');
+        a.append(el('div', 'font-semibold', 'Assets (ringkas)'));
+        const p = el('pre', 'bg-slate-100 p-3 rounded overflow-x-auto text-xs');
+        p.textContent = JSON.stringify({
+          css: (j.assets.css || []).slice(0, 5),
+          js: (j.assets.js || []).slice(0, 5)
+        }, null, 2);
+        a.append(p);
+        box.append(a);
+      }
+
+      // Init data (Bubble)
+      const init = el('div');
+      init.append(el('div', 'font-semibold', 'Init Data (Bubble)'));
+      init.append(el('div', 'text-xs text-slate-600',
+        j.source?.hasInitData ? '✅ Ditemukan' : '—'));
+      if (j.initData) {
+        const pre = el('pre', 'bg-slate-100 p-3 rounded overflow-x-auto text-xs');
+        // tampilkan cuma 1-2 item biar gak berat
+        const preview = Array.isArray(j.initData) ? j.initData.slice(0, 2) : j.initData;
+        pre.textContent = JSON.stringify(preview, null, 2);
+        init.append(pre);
+      }
+      box.append(init);
+    }
+
+    document.getElementById('go').addEventListener('click', scrape);
+    // Auto-run sekali
+    scrape();
+  </script>
+</body>
+</html>
